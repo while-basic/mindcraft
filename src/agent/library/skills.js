@@ -1332,3 +1332,44 @@ export async function activateNearestBlock(bot, type) {
     log(bot, `Activated ${type} at x:${block.position.x.toFixed(1)}, y:${block.position.y.toFixed(1)}, z:${block.position.z.toFixed(1)}.`);
     return true;
 }
+
+export async function shareBlueprint(bot, blueprint, targetBot) {
+    const blueprintData = JSON.stringify(blueprint);
+    bot.chat(`/tell ${targetBot} !receiveBlueprint(${blueprintData})`);
+}
+
+export async function validateBuildSpace(bot, area) {
+    const {startX, startY, startZ, endX, endY, endZ} = area;
+    
+    for (let x = startX; x < endX; x++) {
+        for (let y = startY; y < endY; y++) {
+            for (let z = startZ; z < endZ; z++) {
+                const block = bot.blockAt(new Vec3(x, y, z));
+                if (!block || (!block.name.includes('air') && !block.name.includes('water'))) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+export async function coordinateBuild(bot, blueprint, zone) {
+    const progress = {
+        total: 0,
+        completed: 0
+    };
+
+    // Calculate total blocks in zone
+    for (let y = 0; y < blueprint.blocks.length; y++) {
+        for (let z = 0; z < blueprint.blocks[0].length; z++) {
+            for (let x = zone.startX; x < zone.endX; x++) {
+                if (blueprint.blocks[y][z][x] !== null) {
+                    progress.total++;
+                }
+            }
+        }
+    }
+
+    return progress;
+}

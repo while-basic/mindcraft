@@ -1,7 +1,7 @@
 {
     "name": "andy",
 
-    "model": "gemini-1.5-flash",
+    "model": "gemini-2.0-flash-exp",
 
     "embedding": "openai",
     
@@ -16,7 +16,7 @@
         "unstuck": true,
         "cowardice": true,
         "self_defense": true,
-        "hunting": true,
+        "hunting": false,
         "item_collecting": true,
         "torch_placing": true,
         "idle_staring": true,

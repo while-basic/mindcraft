@@ -1,7 +1,10 @@
+import pkg from 'prismarine-item';
+const { Item } = pkg;
 import { readFileSync } from 'fs';
 import { executeCommand } from './commands/index.js';
 import { getPosition } from './library/world.js'
 import settings from '../../settings.js';
+import { CollaborativeBuildGoal } from './npc/collaborative_build_goal.js';
 
 
 export class TaskValidator {
@@ -96,100 +99,176 @@ export class Task {
     }
 
     async initBotTask() {
-        if (this.data === null)
-            return;
-        let bot = this.agent.bot;
-        let name = this.agent.name;
-    
-        bot.chat(`/clear ${name}`);
-        console.log(`Cleared ${name}'s inventory.`);
-        
-        //wait for a bit so inventory is cleared
-        await new Promise((resolve) => setTimeout(resolve, 500));
-    
-        if (this.data.agent_count > 1) {
-            var initial_inventory = this.data.initial_inventory[this.agent.count_id.toString()];
-            console.log("Initial inventory:", initial_inventory);
-        } else if (this.data) {
-            console.log("Initial inventory:", this.data.initial_inventory);
-            var initial_inventory = this.data.initial_inventory;
-        }
-    
-        if ("initial_inventory" in this.data) {
-            console.log("Setting inventory...");
-            console.log("Inventory to set:", initial_inventory);
-            for (let key of Object.keys(initial_inventory)) {
-                console.log('Giving item:', key);
-                bot.chat(`/give ${name} ${key} ${initial_inventory[key]}`);
-            };
-            //wait for a bit so inventory is set
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            console.log("Done giving inventory items.");
-        }
-        // Function to generate random numbers
-    
-        function getRandomOffset(range) {
-            return Math.floor(Math.random() * (range * 2 + 1)) - range;
-        }
-    
-        let human_player_name = null;
-        let available_agents = settings.profiles.map((p) => JSON.parse(readFileSync(p, 'utf8')).name);  // TODO this does not work with command line args
-    
-        // Finding if there is a human player on the server
-        for (const playerName in bot.players) {
-            const player = bot.players[playerName];
-            if (!available_agents.some((n) => n === playerName)) {
-                console.log('Found human player:', player.username);
-                human_player_name = player.username
-                break;
+        try {
+            console.log("Initializing bot task...");
+            
+            // Clear inventory before starting task
+            await this.agent.bot.creative.clearInventory();
+            console.log(`Cleared ${this.agent.name}'s inventory.`);
+            
+            // Check if we have agent roles defined
+            if (!this.data || !this.data.agent_roles) {
+                throw new Error("No agent roles defined in task data");
             }
-        }
-
-        // If there are multiple human players, teleport to the first one
-    
-        // teleport near a human player if found by default
-    
-        if (human_player_name) {
-            console.log(`Teleporting ${name} to human ${human_player_name}`)
-            bot.chat(`/tp ${name} ${human_player_name}`) // teleport on top of the human player
-    
-        }
-        await new Promise((resolve) => setTimeout(resolve, 200));
-    
-        // now all bots are teleport on top of each other (which kinda looks ugly)
-        // Thus, we need to teleport them to random distances to make it look better
-    
-        /*
-        Note : We don't want randomness for construction task as the reference point matters a lot.
-        Another reason for no randomness for construction task is because, often times the user would fly in the air,
-        then set a random block to dirt and teleport the bot to stand on that block for starting the construction,
-        This was done by MaxRobinson in one of the youtube videos.
-        */
-    
-        if (this.data.type !== 'construction') {
-            const pos = getPosition(bot);
-            const xOffset = getRandomOffset(5);
-            const zOffset = getRandomOffset(5);
-            bot.chat(`/tp ${name} ${Math.floor(pos.x + xOffset)} ${pos.y + 3} ${Math.floor(pos.z + zOffset)}`);
-            await new Promise((resolve) => setTimeout(resolve, 200));
-        }
-
-        if (this.data.agent_count && this.data.agent_count > 1) {
-            // TODO wait for other bots to join
-            await new Promise((resolve) => setTimeout(resolve, 10000));
-            if (available_agents.length < this.data.agent_count) {
-                console.log(`Missing ${this.data.agent_count - available_agents.length} bot(s).`);
-                this.agent.killAll();
+            
+            // Find the role for this agent
+            const agentRole = this.data.agent_roles.find(role => 
+                role.responsibility === (this.agent === this.otherAgent ? "walls" : "base")
+            );
+            
+            if (!agentRole) {
+                throw new Error(`No role found for agent ${this.agent.name}`);
             }
+            
+            // Set up initial inventory based on role
+            console.log(`Setting up inventory for ${this.agent.name} with role ${agentRole.role}`);
+            
+            // Wait for inventory to be ready
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Set inventory slots sequentially
+            for (const [itemName, count] of Object.entries(agentRole.initial_inventory)) {
+                try {
+                    const mcItemName = itemName.toLowerCase();
+                    const item = this.agent.bot.registry.itemsByName[mcItemName];
+                    
+                    if (!item) {
+                        console.error(`Unknown item: ${mcItemName}`);
+                        continue;
+                    }
+                    
+                    // Wait between each slot setting
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    // Create the item stack
+                    const itemStack = {
+                        type: item.id,
+                        count: count,
+                        metadata: 0,
+                        nbt: {}
+                    };
+                    
+                    // Set the slot with proper await
+                    await this.agent.bot.creative.setInventorySlot(
+                        Object.keys(agentRole.initial_inventory).indexOf(itemName), 
+                        itemStack
+                    );
+                    
+                    console.log(`Added ${count} ${mcItemName} to inventory`);
+                    
+                } catch (error) {
+                    console.error(`Failed to add item ${itemName}:`, error);
+                }
+            }
+            
+            console.log(`Bot task initialized for ${this.agent.name}`);
+        } catch (error) {
+            console.error("Error in initBotTask:", error);
+            if (error.stack) {
+                console.error("Stack trace:", error.stack);
+            }
+            throw error;
         }
+    }
+}
 
-        if (this.data.goal) {
-            await executeCommand(this.agent, `!goal("${this.data.goal}")`);
+export class CollaborativeBuildTask extends Task {
+    constructor(agent, data) {
+        super(agent);
+        this.data = data;
+        this.buildGoal = new CollaborativeBuildGoal(agent);
+        this.otherAgent = null; // Will be set after construction
+    }
+
+    async init() {
+        try {
+            console.log("Starting CollaborativeBuildTask initialization...");
+            console.log("Task data:", this.data); // Debug log
+            
+            if (!this.data || this.data.type !== 'collaborative_build') {
+                throw new Error("Invalid task data or type");
+            }
+            
+            // Initialize base task
+            console.log("Initializing base task...");
+            await super.initBotTask();
+            console.log("Base task initialized");
+            
+            // Verify agents are ready
+            if (!this.agent || !this.otherAgent) {
+                throw new Error("Missing agent references");
+            }
+            
+            // Initialize build goal with both agents
+            console.log("Initializing build goal...");
+            await this.buildGoal.init([this.agent, this.otherAgent]);
+            console.log("Build goal initialized");
+            
+            // Wait for all agents to be ready
+            console.log("Waiting for collaborators...");
+            await this.waitForCollaborators();
+            console.log("All collaborators ready");
+            
+            // Share blueprint with all agents
+            console.log("Getting base position...");
+            const blueprint = this.data.blueprint;
+            const basePosition = this.agent.bot.entity.position;
+            
+            // Assign build zones
+            console.log("Assigning build zones...");
+            await this.buildGoal.assignBuildZone(blueprint, basePosition);
+            console.log("Build zones assigned");
+            
+            // Start coordinated build
+            console.log("Starting coordinated build...");
+            await this.buildGoal.coordinateBuild(blueprint);
+            console.log("Build coordination initialized");
+        } catch (error) {
+            console.error("CollaborativeBuildTask initialization failed:", error);
+            if (error.stack) {
+                console.error("Stack trace:", error.stack);
+            }
+            throw error;
         }
-    
-        if (this.data.conversation && this.agent.count_id === 0) {
-            let other_name = available_agents.filter(n => n !== name)[0];
-            await executeCommand(this.agent, `!startConversation("${other_name}", "${this.data.conversation}")`);
+    }
+
+    async waitForCollaborators() {
+        try {
+            const expectedAgents = this.data.agent_roles.length;
+            let connectedAgents = 0;
+            let attempts = 0;
+            const maxAttempts = 30; // 30 second timeout
+            
+            console.log(`Waiting for ${expectedAgents} agents to connect...`);
+            
+            while (connectedAgents < expectedAgents && attempts < maxAttempts) {
+                connectedAgents = Object.keys(this.agent.bot.players).length;
+                console.log(`Connected agents: ${connectedAgents}/${expectedAgents}`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                attempts++;
+            }
+            
+            if (attempts >= maxAttempts) {
+                throw new Error(`Timeout waiting for agents to connect. Only ${connectedAgents}/${expectedAgents} connected.`);
+            }
+            
+            console.log("All agents connected successfully");
+        } catch (error) {
+            console.error("Error in waitForCollaborators:", error);
+            throw error;
         }
-    }    
+    }
+
+    isDone() {
+        try {
+            if (!this.buildGoal) return false;
+            const progress1 = this.buildGoal.buildProgress.get(this.agent.name);
+            const progress2 = this.buildGoal.buildProgress.get(this.otherAgent.name);
+            return progress1?.placedBlocks === progress1?.totalBlocks && 
+                   progress2?.placedBlocks === progress2?.totalBlocks;
+        } catch (error) {
+            console.error("Error checking isDone:", error);
+            return false;
+        }
+    }
 }

@@ -1,7 +1,7 @@
 {
-    "name": "andy",
+    "name": "andy_npc",
 
-    "model": "claude-3-5-sonnet-20240620",
+    "model": "gemini-2.0-flash-exp",
 
     "embedding": "openai",
     

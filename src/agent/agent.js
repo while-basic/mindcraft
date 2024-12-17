@@ -73,8 +73,18 @@ export class Agent {
                     this.bot.chat(`/skin clear`);
             });
 
+            const maxRetries = 3;
+            let retryCount = 0;
             const spawnTimeout = setTimeout(() => {
-                process.exit(0);
+                if (retryCount < maxRetries) {
+                    console.log(`Retry ${retryCount + 1}/${maxRetries} for ${this.name}...`);
+                    this.bot.quit();
+                    this.bot = initBot(this.name);
+                    retryCount++;
+                } else {
+                    console.error(`Failed to spawn ${this.name} after ${maxRetries} attempts`);
+                    process.exit(1);
+                }
             }, 30000);
             this.bot.once('spawn', async () => {
                 try {
@@ -90,11 +100,12 @@ export class Agent {
                     this._setupEventHandlers(save_data, init_message);
                     this.startEvents();
 
-                    this.task.initBotTask();
+                    await this.task.initBotTask();
 
                 } catch (error) {
                     console.error('Error in spawn event:', error);
-                    process.exit(0);
+                    // Don't exit, just log the error
+                    this.bot.chat('/tp @s ~ ~1 ~'); // Try to unstuck if needed
                 }
             });
         } catch (error) {

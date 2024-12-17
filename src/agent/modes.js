@@ -115,7 +115,7 @@ const modes_list = [
         description: 'Run away from enemies. Interrupts all actions.',
         interrupts: ['all'],
         on: true,
-        active: false,
+        active: true,
         update: async function (agent) {
             const enemy = world.getNearestEntityWhere(agent.bot, entity => mc.isHostile(entity), 16);
             if (enemy && await world.isClearPath(agent.bot, enemy)) {
@@ -163,7 +163,7 @@ const modes_list = [
         description: 'Collect nearby items when idle.',
         interrupts: ['action:followPlayer'],
         on: true,
-        active: false,
+        active: true,
 
         wait: 2, // number of seconds to wait after noticing an item to pick it up
         prev_item: null,

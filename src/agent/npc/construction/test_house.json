@@ -1,0 +1,49 @@
+{
+    "type": "collaborative_build",
+    "goal": "Build a test house together",
+    "agent_count": 2,
+    "agent_roles": [
+        {
+            "role": "foundation",
+            "responsibility": "base",
+            "initial_inventory": {
+                "stone": 64,
+                "oak_planks": 64
+            }
+        },
+        {
+            "role": "walls",
+            "responsibility": "walls",
+            "initial_inventory": {
+                "oak_planks": 64,
+                "glass": 16
+            }
+        }
+    ],
+    "blueprint": {
+        "blocks": [
+            [
+                ["stone", "stone", "stone", "stone", "stone"],
+                ["stone", "stone", "stone", "stone", "stone"],
+                ["stone", "stone", "stone", "stone", "stone"],
+                ["stone", "stone", "stone", "stone", "stone"],
+                ["stone", "stone", "stone", "stone", "stone"]
+            ],
+            [
+                ["oak_planks", "oak_planks", "oak_planks", "oak_planks", "oak_planks"],
+                ["oak_planks", "air", "air", "air", "oak_planks"],
+                ["oak_planks", "air", "air", "air", "oak_planks"],
+                ["oak_planks", "air", "air", "air", "oak_planks"],
+                ["oak_planks", "oak_planks", "oak_planks", "oak_planks", "oak_planks"]
+            ],
+            [
+                ["oak_planks", "oak_planks", "oak_planks", "oak_planks", "oak_planks"],
+                ["oak_planks", "glass", "glass", "glass", "oak_planks"],
+                ["oak_planks", "glass", "glass", "glass", "oak_planks"],
+                ["oak_planks", "glass", "glass", "glass", "oak_planks"],
+                ["oak_planks", "oak_planks", "oak_planks", "oak_planks", "oak_planks"]
+            ]
+        ],
+        "offset": 0
+    }
+} 

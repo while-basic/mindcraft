@@ -1,0 +1,39 @@
+{
+    "type": "collaborative_build",
+    "goal": "Build a village together",
+    "agent_roles": [
+        {
+            "role": "architect",
+            "responsibility": "layout",
+            "initial_inventory": {
+                "oak_planks": 64,
+                "stone": 64,
+                "glass": 32
+            }
+        },
+        {
+            "role": "builder",
+            "responsibility": "walls",
+            "initial_inventory": {
+                "oak_planks": 64,
+                "cobblestone": 64,
+                "glass": 32
+            }
+        },
+        {
+            "role": "decorator",
+            "responsibility": "details",
+            "initial_inventory": {
+                "torch": 32,
+                "flower": 16,
+                "lantern": 8
+            }
+        }
+    ],
+    "blueprint": {
+        "blocks": [
+            
+        ],
+        "offset": 0
+    }
+} 
