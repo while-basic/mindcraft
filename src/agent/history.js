@@ -32,14 +32,26 @@ export class History {
 
     async summarizeMemories(turns) {
         console.log("Storing memories...");
-        this.memory = await this.agent.prompter.promptMemSaving(turns);
-
-        if (this.memory.length > 500) {
-            this.memory = this.memory.slice(0, 500);
-            this.memory += '...(Memory truncated to 500 chars. Compress it more next time)';
+        try {
+            const newMemory = await this.agent.prompter.promptMemSaving(turns);
+            
+            // If we got a valid response, update memory
+            if (newMemory) {
+                this.memory = newMemory;
+                
+                if (this.memory.length > 500) {
+                    this.memory = this.memory.slice(0, 500);
+                    this.memory += '...(Memory truncated to 500 chars. Compress it more next time)';
+                }
+                
+                console.log("Memory updated to: ", this.memory);
+            } else {
+                console.warn("Failed to generate memory summary - keeping existing memory");
+            }
+        } catch (err) {
+            console.error("Error summarizing memories:", err);
+            // Don't throw - allow the bot to continue with existing memory
         }
-
-        console.log("Memory updated to: ", this.memory);
     }
 
     appendFullHistory(to_store) {

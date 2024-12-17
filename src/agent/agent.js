@@ -196,125 +196,130 @@ export class Agent {
     }
 
     async handleMessage(source, message, max_responses=null) {
-        if (!source || !message) {
-            console.warn('Received empty message from', source);
-            return false;
-        }
-
-        let used_command = false;
-        if (max_responses === null) {
-            max_responses = settings.max_commands === -1 ? Infinity : settings.max_commands;
-        }
-        if (max_responses === -1) {
-            max_responses = Infinity;
-        }
-
-        const self_prompt = source === 'system' || source === this.name;
-        const from_other_bot = convoManager.isOtherAgent(source);
-
-        if (!self_prompt && !from_other_bot) { // from user, check for forced commands
-            const user_command_name = containsCommand(message);
-            if (user_command_name) {
-                if (!commandExists(user_command_name)) {
-                    this.routeResponse(source, `Command '${user_command_name}' does not exist.`);
-                    return false;
-                }
-                this.routeResponse(source, `*${source} used ${user_command_name.substring(1)}*`);
-                if (user_command_name === '!newAction') {
-                    // all user-initiated commands are ignored by the bot except for this one
-                    // add the preceding message to the history to give context for newAction
-                    this.history.add(source, message);
-                }
-                let execute_res = await executeCommand(this, message);
-                if (execute_res) 
-                    this.routeResponse(source, execute_res);
-                return true;
+        try {
+            if (!message) {
+                console.warn('Received null/undefined message in handleMessage');
+                return;
             }
-        }
 
-        if (from_other_bot)
-            this.last_sender = source;
-
-        // Now translate the message
-        message = await handleEnglishTranslation(message);
-        console.log('received message from', source, ':', message);
-
-        const checkInterrupt = () => this.self_prompter.shouldInterrupt(self_prompt) || this.shut_up || convoManager.responseScheduledFor(source);
-        
-        let behavior_log = this.bot.modes.flushBehaviorLog();
-        if (behavior_log.trim().length > 0) {
-            const MAX_LOG = 500;
-            if (behavior_log.length > MAX_LOG) {
-                behavior_log = '...' + behavior_log.substring(behavior_log.length - MAX_LOG);
+            let used_command = false;
+            if (max_responses === null) {
+                max_responses = settings.max_commands === -1 ? Infinity : settings.max_commands;
             }
-            behavior_log = 'Recent behaviors log: \n' + behavior_log.substring(behavior_log.indexOf('\n'));
-            await this.history.add('system', behavior_log);
-        }
+            if (max_responses === -1) {
+                max_responses = Infinity;
+            }
 
-        // Handle other user messages
-        await this.history.add(source, message);
-        this.history.save();
+            const self_prompt = source === 'system' || source === this.name;
+            const from_other_bot = convoManager.isOtherAgent(source);
 
-        if (!self_prompt && this.self_prompter.on) // message is from user during self-prompting
-            max_responses = 1; // force only respond to this message, then let self-prompting take over
-        for (let i=0; i<max_responses; i++) {
-            if (checkInterrupt()) break;
-            let history = this.history.getHistory();
-            let res = await this.prompter.promptConvo(history);
+            if (!self_prompt && !from_other_bot) { // from user, check for forced commands
+                const user_command_name = containsCommand(message);
+                if (user_command_name) {
+                    if (!commandExists(user_command_name)) {
+                        this.routeResponse(source, `Command '${user_command_name}' does not exist.`);
+                        return false;
+                    }
+                    this.routeResponse(source, `*${source} used ${user_command_name.substring(1)}*`);
+                    if (user_command_name === '!newAction') {
+                        // all user-initiated commands are ignored by the bot except for this one
+                        // add the preceding message to the history to give context for newAction
+                        this.history.add(source, message);
+                    }
+                    let execute_res = await executeCommand(this, message);
+                    if (execute_res) 
+                        this.routeResponse(source, execute_res);
+                    return true;
+                }
+            }
 
-            console.log(`${this.name} full response to ${source}: ""${res}""`);
+            if (from_other_bot)
+                this.last_sender = source;
+
+            // Now translate the message
+            message = await handleEnglishTranslation(message);
+            console.log('received message from', source, ':', message);
+
+            const checkInterrupt = () => this.self_prompter.shouldInterrupt(self_prompt) || this.shut_up || convoManager.responseScheduledFor(source);
             
-            if (res.trim().length === 0) { 
-                console.warn('no response')
-                break; // empty response ends loop
+            let behavior_log = this.bot.modes.flushBehaviorLog();
+            if (behavior_log.trim().length > 0) {
+                const MAX_LOG = 500;
+                if (behavior_log.length > MAX_LOG) {
+                    behavior_log = '...' + behavior_log.substring(behavior_log.length - MAX_LOG);
+                }
+                behavior_log = 'Recent behaviors log: \n' + behavior_log.substring(behavior_log.indexOf('\n'));
+                await this.history.add('system', behavior_log);
             }
 
-            let command_name = containsCommand(res);
-
-            if (command_name) { // contains query or command
-                res = truncCommandMessage(res); // everything after the command is ignored
-                this.history.add(this.name, res);
-                
-                if (!commandExists(command_name)) {
-                    this.history.add('system', `Command ${command_name} does not exist.`);
-                    console.warn('Agent hallucinated command:', command_name)
-                    continue;
-                }
-
-                if (checkInterrupt()) break;
-                this.self_prompter.handleUserPromptedCmd(self_prompt, isAction(command_name));
-
-                if (settings.verbose_commands) {
-                    this.routeResponse(source, res);
-                }
-                else { // only output command name
-                    let pre_message = res.substring(0, res.indexOf(command_name)).trim();
-                    let chat_message = `*used ${command_name.substring(1)}*`;
-                    if (pre_message.length > 0)
-                        chat_message = `${pre_message}  ${chat_message}`;
-                    this.routeResponse(source, chat_message);
-                }
-
-                let execute_res = await executeCommand(this, res);
-
-                console.log('Agent executed:', command_name, 'and got:', execute_res);
-                used_command = true;
-
-                if (execute_res)
-                    this.history.add('system', execute_res);
-                else
-                    break;
-            }
-            else { // conversation response
-                this.history.add(this.name, res);
-                this.routeResponse(source, res);
-                break;
-            }
-            
+            // Handle other user messages
+            await this.history.add(source, message);
             this.history.save();
-        }
 
-        return used_command;
+            if (!self_prompt && this.self_prompter.on) // message is from user during self-prompting
+                max_responses = 1; // force only respond to this message, then let self-prompting take over
+            for (let i=0; i<max_responses; i++) {
+                if (checkInterrupt()) break;
+                let history = this.history.getHistory();
+                let res = await this.prompter.promptConvo(history);
+
+                console.log(`${this.name} full response to ${source}: ""${res}""`);
+                
+                if (res.trim().length === 0) { 
+                    console.warn('no response')
+                    break; // empty response ends loop
+                }
+
+                let command_name = containsCommand(res);
+
+                if (command_name) { // contains query or command
+                    res = truncCommandMessage(res); // everything after the command is ignored
+                    this.history.add(this.name, res);
+                    
+                    if (!commandExists(command_name)) {
+                        this.history.add('system', `Command ${command_name} does not exist.`);
+                        console.warn('Agent hallucinated command:', command_name)
+                        continue;
+                    }
+
+                    if (checkInterrupt()) break;
+                    this.self_prompter.handleUserPromptedCmd(self_prompt, isAction(command_name));
+
+                    if (settings.verbose_commands) {
+                        this.routeResponse(source, res);
+                    }
+                    else { // only output command name
+                        let pre_message = res.substring(0, res.indexOf(command_name)).trim();
+                        let chat_message = `*used ${command_name.substring(1)}*`;
+                        if (pre_message.length > 0)
+                            chat_message = `${pre_message}  ${chat_message}`;
+                        this.routeResponse(source, chat_message);
+                    }
+
+                    let execute_res = await executeCommand(this, res);
+
+                    console.log('Agent executed:', command_name, 'and got:', execute_res);
+                    used_command = true;
+
+                    if (execute_res)
+                        this.history.add('system', execute_res);
+                    else
+                        break;
+                }
+                else { // conversation response
+                    this.history.add(this.name, res);
+                    this.routeResponse(source, res);
+                    break;
+                }
+                
+                this.history.save();
+            }
+
+            return used_command;
+        } catch (error) {
+            console.error('Error handling message:', error);
+            // Optionally implement error recovery/notification
+        }
     }
 
     async routeResponse(to_player, message) {
@@ -465,5 +470,70 @@ export class Agent {
 
     killAll() {
         serverProxy.shutdown();
+    }
+
+    async connectToMinecraft() {
+        const maxRetries = 3;
+        let retryCount = 0;
+
+        while (retryCount < maxRetries) {
+            try {
+                console.log('Attempting to connect to Minecraft...');
+                // Add delay between retries
+                if (retryCount > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+
+                // Your existing connection code here
+                await this.bot.connect();
+                console.log('Successfully connected to Minecraft');
+                return;
+
+            } catch (error) {
+                retryCount++;
+                console.error(`Connection attempt ${retryCount} failed:`, error);
+                
+                if (error.code === 'ECONNRESET') {
+                    console.log('Connection reset, retrying...');
+                }
+
+                if (retryCount === maxRetries) {
+                    throw new Error(`Failed to connect after ${maxRetries} attempts`);
+                }
+            }
+        }
+    }
+
+    async initialize() {
+        try {
+            console.log('Initializing agent...');
+            
+            // Initialize Llama first
+            console.log('Connecting to Llama...');
+            await this.llama.initializeConnection();
+            
+            // Then connect to Minecraft
+            console.log('Connecting to Minecraft...');
+            await this.connectToMinecraft();
+            
+            console.log('Agent initialization complete');
+        } catch (error) {
+            console.error('Failed to initialize agent:', error);
+            // Implement proper cleanup
+            await this.cleanup();
+            throw error;
+        }
+    }
+
+    async cleanup() {
+        try {
+            // Cleanup code here
+            if (this.llama) {
+                await this.llama.close();
+            }
+            // Other cleanup as needed
+        } catch (error) {
+            console.error('Cleanup error:', error);
+        }
     }
 }
