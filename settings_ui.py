@@ -1,6 +1,8 @@
 import gradio as gr
 import json
 import re
+import os
+from pathlib import Path
 
 def load_settings():
     try:
@@ -15,11 +17,38 @@ def load_settings():
         print(f"Error loading settings: {e}")
         return {}
 
+def load_profile(profile_path):
+    try:
+        with open(profile_path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading profile: {e}")
+        return {}
+
+def save_profile(name, model, embedding, conversing, coding, saving_memory, modes, npc_settings):
+    try:
+        profile_data = {
+            "name": name,
+            "model": model,
+            "embedding": embedding,
+            "conversing": conversing,
+            "coding": coding,
+            "saving_memory": saving_memory,
+            "modes": json.loads(modes),
+            "npc": json.loads(npc_settings)
+        }
+        
+        profile_path = os.path.join("profiles", f"{name}.json")
+        with open(profile_path, 'w') as f:
+            json.dump(profile_data, f, indent=4)
+        return f"✅ Profile {name} saved successfully!"
+    except Exception as e:
+        return f"❌ Error saving profile: {str(e)}"
+
 def save_settings(minecraft_version, host, port, auth, base_profile, init_message):
     try:
         current_settings = load_settings()
         
-        # Update only the fields we're managing
         new_settings = {
             "minecraft_version": minecraft_version,
             "host": host,
@@ -30,7 +59,6 @@ def save_settings(minecraft_version, host, port, auth, base_profile, init_messag
         }
         current_settings.update(new_settings)
         
-        # Format with comments
         settings_text = f"""export default 
 {{
     "minecraft_version": "{minecraft_version}", // supports up to 1.21.1
@@ -69,49 +97,159 @@ def save_settings(minecraft_version, host, port, auth, base_profile, init_messag
     except Exception as e:
         return f"❌ Error: {str(e)}"
 
+def list_profiles():
+    profiles_dir = Path("profiles")
+    if not profiles_dir.exists():
+        return []
+    return [f.stem for f in profiles_dir.glob("*.json")]
+
+def load_profile_for_editing(profile_name):
+    if not profile_name:
+        return ["", "", "", "", "", "{}", "{}"]
+    
+    profile_path = os.path.join("profiles", f"{profile_name}.json")
+    profile = load_profile(profile_path)
+    
+    return [
+        profile.get("model", ""),
+        profile.get("embedding", ""),
+        profile.get("conversing", ""),
+        profile.get("coding", ""),
+        profile.get("saving_memory", ""),
+        json.dumps(profile.get("modes", {}), indent=2),
+        json.dumps(profile.get("npc", {}), indent=2)
+    ]
+
 def create_ui():
     settings = load_settings()
     
-    return gr.Interface(
-        fn=save_settings,
-        inputs=[
-            gr.Dropdown(
+    with gr.Blocks(title="🎮 Mindcraft Settings") as demo:
+        gr.Markdown("# 🎮 Mindcraft Settings")
+        
+        with gr.Tab("Server Settings"):
+            minecraft_version = gr.Dropdown(
                 choices=["1.20.4", "1.21.1"],
                 value=settings.get("minecraft_version", "1.20.4"),
                 label="Minecraft Version"
-            ),
-            gr.Textbox(
+            )
+            host = gr.Textbox(
                 value=settings.get("host", "127.0.0.1"),
                 label="Host"
-            ),
-            gr.Number(
+            )
+            port = gr.Number(
                 value=settings.get("port", 55916),
                 label="Port"
-            ),
-            gr.Radio(
+            )
+            auth = gr.Radio(
                 choices=["offline", "microsoft"],
                 value=settings.get("auth", "offline"),
                 label="Authentication"
-            ),
-            gr.Dropdown(
+            )
+            base_profile = gr.Dropdown(
                 choices=["./profiles/defaults/survival.json", "./profiles/defaults/creative.json"],
                 value=settings.get("base_profile", "./profiles/defaults/survival.json"),
                 label="Base Profile"
-            ),
-            gr.Textbox(
+            )
+            init_message = gr.Textbox(
                 value=settings.get("init_message", ""),
                 label="Init Message"
             )
-        ],
-        outputs=gr.Textbox(label="Status"),
-        title="🎮 Mindcraft Settings",
-        description="Configure your Mindcraft server settings"
-    )
+            server_status = gr.Textbox(label="Status")
+            save_server = gr.Button("💾 Save Server Settings")
+            
+            save_server.click(
+                fn=save_settings,
+                inputs=[minecraft_version, host, port, auth, base_profile, init_message],
+                outputs=server_status
+            )
+        
+        with gr.Tab("Profile Manager"):
+            with gr.Row():
+                profile_list = gr.Dropdown(
+                    choices=list_profiles(),
+                    label="Select Profile",
+                    value=None
+                )
+                profile_name = gr.Textbox(
+                    label="Profile Name",
+                    placeholder="Enter new profile name"
+                )
+            
+            with gr.Column():
+                model = gr.Dropdown(
+                    choices=["claude-3-5-sonnet-20240620", "gpt-4-turbo-preview", "gpt-3.5-turbo"],
+                    label="Model"
+                )
+                embedding = gr.Dropdown(
+                    choices=["openai", "local"],
+                    label="Embedding"
+                )
+                conversing = gr.TextArea(
+                    label="Conversing Prompt",
+                    lines=5
+                )
+                coding = gr.TextArea(
+                    label="Coding Prompt",
+                    lines=5
+                )
+                saving_memory = gr.TextArea(
+                    label="Memory Saving Prompt",
+                    lines=5
+                )
+                modes = gr.TextArea(
+                    label="Modes (JSON)",
+                    lines=10,
+                    value=json.dumps({
+                        "self_preservation": True,
+                        "unstuck": True,
+                        "cowardice": True,
+                        "self_defense": True,
+                        "hunting": True,
+                        "item_collecting": True,
+                        "torch_placing": True,
+                        "idle_staring": True,
+                        "cheat": False
+                    }, indent=2)
+                )
+                npc_settings = gr.TextArea(
+                    label="NPC Settings (JSON)",
+                    lines=10,
+                    value=json.dumps({
+                        "do_routine": True,
+                        "do_set_goal": True,
+                        "goals": [
+                            "wooden_pickaxe",
+                            "dirt_shelter",
+                            "stone_pickaxe",
+                            "stone_axe",
+                            "small_wood_house",
+                            "furnace",
+                            "iron_pickaxe",
+                            "iron_sword"
+                        ]
+                    }, indent=2)
+                )
+                
+            profile_status = gr.Textbox(label="Status")
+            save_profile_btn = gr.Button("💾 Save Profile")
+            
+            profile_list.change(
+                fn=load_profile_for_editing,
+                inputs=[profile_list],
+                outputs=[model, embedding, conversing, coding, saving_memory, modes, npc_settings]
+            )
+            
+            save_profile_btn.click(
+                fn=save_profile,
+                inputs=[profile_name, model, embedding, conversing, coding, saving_memory, modes, npc_settings],
+                outputs=profile_status
+            )
+    
+    return demo
 
 if __name__ == "__main__":
     demo = create_ui()
     
-    # Try different ports
     for port in range(7860, 7960):
         try:
             print(f"Starting server on port {port}...")
